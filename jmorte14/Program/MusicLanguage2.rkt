@@ -130,9 +130,9 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;; Input
-;;  | start of parallel
-;;  * start of sequentiel
-;;  , start of note
-;;  . start of pause
+;;  | | parallel
+;;  [ ] sequentiel
+;;  , , note
+;;  . . pause
 ;; e.g.
-;; | * , 'C# 8 2 'piano , . 2 . , 'C 2 2 'violin , * * , 'C 2 2 'violin , . 2 . , 'C# 8 2 'piano , * |
+;; | [ , 'C# 8 2 'piano , . 2 . , 'C 2 2 'violin , ] [ , 'C 2 2 'violin , . 2 . , 'C# 8 2 'piano , ] |
