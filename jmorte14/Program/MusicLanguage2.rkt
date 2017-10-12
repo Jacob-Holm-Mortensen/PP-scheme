@@ -116,9 +116,23 @@
 (define (map-music-element music-element) 1)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;; Transform music element to list of absolute timed notes
+(define (get-absolute-timed-notes-of element)
+  (if (eq? (type-of element) 'note) 'DoSomething 'DoSomethingElse))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;; Test cases
 (define m (parallel (list (parallel (list (note 'C# 4 3/4 'violin)
                                           (note 'C 4 2 'piano)))
                           (note 'C 4 2 'piano))))
 (define n (note 'C 4 2 'piano))
 (define p (pause 20))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;; Input
+;;  | start of parallel
+;;  * start of sequentiel
+;;  , start of note
+;;  . start of pause
+;; e.g.
+;; | * , 'C# 8 2 'piano , . 2 . , 'C 2 2 'violin , * * , 'C 2 2 'violin , . 2 . , 'C# 8 2 'piano , * |
