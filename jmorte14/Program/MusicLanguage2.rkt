@@ -64,6 +64,9 @@
              (integer? (* 4 amount))
              (integer? (* 8 amount))) (exact-floor (* 960 amount)))
         (else (error "Unsupported duration"))))
+;; Convert time ticks to seconds
+(define (get-seconds time-ticks)
+  (/ time-ticks 960))
 ;; Convert note-name and octave to pitch
 (define (get-pitch note-name octave)
   (+ (get-note-number note-name) (* 12 (if (<= octave 8) octave (error "Unsupported octave")))))
@@ -81,7 +84,24 @@
         ((eq? note-name 'A#) 10)
         ((eq? note-name 'B) 11)
         (else (error "Unsupported note"))))
-;; Convert instrument type to an integer
+;; Convert pitch to note-name and octave
+(define (get-note-name pitch)
+  (cond ((eq? (modulo pitch 12) 0) 'C)
+        ((eq? (modulo pitch 12) 1) 'C#)
+        ((eq? (modulo pitch 12) 2) 'D)
+        ((eq? (modulo pitch 12) 3) 'D#)
+        ((eq? (modulo pitch 12) 4) 'E)
+        ((eq? (modulo pitch 12) 5) 'F)
+        ((eq? (modulo pitch 12) 6) 'F#)
+        ((eq? (modulo pitch 12) 7) 'G)
+        ((eq? (modulo pitch 12) 8) 'G#)
+        ((eq? (modulo pitch 12) 9) 'A)
+        ((eq? (modulo pitch 12) 10) 'A#)
+        ((eq? (modulo pitch 12) 11) 'B)
+        (else (error "Unsupported pitch"))))
+(define (get-octave pitch)
+  (exact-floor (/ pitch 12)))
+;; Convert instrument type to integer
 (define (get-instrument type)
   (cond ((eq? type 'piano) 1)
         ((eq? type 'organ) 2)
@@ -92,28 +112,56 @@
         ((eq? type 'helicopter) 7)
         ((eq? type 'telephone) 8)
         (else (error "Unsupported instrument"))))
+;; Convert integer to instrument type
+(define (get-instrument-from intrument-number)
+  (cond ((eq? intrument-number 1) 'piano)
+        ((eq? intrument-number 2) 'organ)
+        ((eq? intrument-number 3) 'guitar)
+        ((eq? intrument-number 4) 'violin)
+        ((eq? intrument-number 5) 'flute)
+        ((eq? intrument-number 6) 'trumpet)
+        ((eq? intrument-number 7) 'helicopter)
+        ((eq? intrument-number 8) 'telephone)
+        (else (error "Unsupported instrument"))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;; Change music element
+;; Go through elements of a parallel or sequentiel music element, returning a modified version
+(define (make-new elements funtion property-type parameter)
+  (cond ((empty? elements) '())
+        ((pair?  elements) (cons (change (first elements) funtion property-type parameter) (make-new (rest elements) funtion property-type parameter)))
+        (else (error "Not a list in music element"))))
+;; Creates new music elements from modified versions
+(define (change element funtion property-type parameter)
+  (cond ((eq? (type-of element) 'parallel) (parallel (make-new (music-element-elements element) funtion property-type parameter)))
+        ((eq? (type-of element) 'sequentiel) (sequentiel (make-new (music-element-elements element) funtion property-type parameter)))
+        ((or (eq? (type-of element) 'note)
+             (eq? (type-of element) 'pause)) (funtion element property-type parameter))))
+;; Modifies a note or pause
+(define (change-element-property element property-type change)
+  (cond ((eq? (type-of element) 'note)  (note  (get-note-name (+ (pitch-of element) (if (eq? property-type 'pitch) change 0)))
+                                               (get-octave (+ (pitch-of element) (if (eq? property-type 'pitch) change 0)))
+                                               (get-seconds (* (duration-of element) (if (eq? property-type 'duration) change 1)))
+                                               (if (eq? property-type 'instrument) change (get-instrument-from (instrument-of element)))))
+        ((eq? (type-of element) 'pause) (pause (get-seconds (* (duration-of element) (if (eq? property-type 'duration) change 1)))))))
 ;; Transpose a music element
-(define (change-pitch element new-note-name new-octave)
-  (if (music-element? element)'() '()))
+(define (transpose element pitch-change)
+  (change element change-element-property 'pitch pitch-change))
 ;; Scale the duration of a music element
-(define (change-duration element scale)
-  (if (music-element? element)'() '()))
+(define (change-duration element duration-multiplier)
+  (change element change-element-property 'duration duration-multiplier))
 ;; Re-instrument a music element
 (define (change-instrument element new-instrument)
-  (if (music-element? element)'() '()))
+  (change element change-element-property 'instrument new-instrument))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;; checking functions
 ;; Get duration of a music element
-
+(define (get-music-element-duration element) 1)
 ;; Is monophonic?
 (define (is-monophonic? music-element) 1)
 ;; Get degree of polyphony
 (define (degree-of-polyphony music-element) 1)
-(define (map-music-element music-element) 1)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;; Transform music element to list of absolute timed notes
@@ -122,14 +170,14 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;; Test cases
-(define m (parallel (list (parallel (list (note 'C# 4 3/4 'violin)
-                                          (note 'C 4 2 'piano)))
-                          (note 'C 4 2 'piano))))
+(define m (parallel (list (note 'C 4 2 'piano)
+                          (pause 20)
+                          (note 'C# 4 3/4 'violin))))
 (define n (note 'C 4 2 'piano))
 (define p (pause 20))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;; Input
+;;;; Input format
 ;;  | | parallel
 ;;  [ ] sequentiel
 ;;  , , note
