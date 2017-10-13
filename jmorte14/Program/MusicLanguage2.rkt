@@ -149,7 +149,7 @@
 (define (transpose element pitch-change)
   (change element change-element-property 'pitch pitch-change))
 ;; Scale the duration of a music element
-(define (change-duration element duration-multiplier)
+(define (multiply-duration element duration-multiplier)
   (change element change-element-property 'duration duration-multiplier))
 ;; Re-instrument a music element
 (define (change-instrument element new-instrument)
@@ -158,11 +158,44 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;; checking functions
 ;; Get duration of a music element
-(define (get-music-element-duration element) 1)
-;; Is monophonic?
-(define (is-monophonic? music-element) 1)
+;; Make new list with add value at an index
+(define (list-with lst index value)
+  (if (null? lst)
+    (if (eq? index 0) (list value) lst)
+    (cons
+      (if (zero? index)
+        (if (empty? (first lst)) value (+ (first lst) value))
+        (first lst))
+      (list-with (rest lst) (- index 1) value))))
+;; Check list containing durations for all parallel elements
+(define check-list '())
+;; Adds parallel elements
+(define (make-parallel-indexes elements number index)
+  (cond ((empty? elements) '())
+        ((pair?  elements) (set! check-list (append check-list (list number)))
+                           (make-parallel-indexes (rest elements) number (+ index 1))
+                           (count-duration (first elements) (+ index 1)))))
+;; Goes through the elements of a music element
+(define (go-through-elements elements index is-parallel)
+  (cond ((empty? elements) '())
+        ((pair?  elements) (if is-parallel (make-parallel-indexes elements (list-ref check-list index) index)
+                                           (begin (count-duration (first elements) index)
+                                                  (go-through-elements (rest elements) index is-parallel))))))
+;; Calls funtions based on type of music element, adds duration to check list at specified index
+(define (count-duration element index)
+  (let ((type (type-of element)))
+  (cond ((eq? type 'parallel) (go-through-elements (music-element-elements element) index #t))
+        ((eq? type 'sequentiel) (go-through-elements (music-element-elements element) index #f))
+        ((or (eq? type 'note)
+             (eq? type 'pause)) (set! check-list (list-with check-list (+ index 0) (duration-of element)))))))
+;; Get duration of music element
+(define (get-music-element-duration element)
+  (set! check-list '(0)) (count-duration element 0) check-list (apply max check-list))
 ;; Get degree of polyphony
 (define (degree-of-polyphony music-element) 1)
+;; Is monophonic?
+(define (monophonic? music-element)
+  (if (eq? (degree-of-polyphony music-element) 1) #t #f))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;; Transform music element to list of absolute timed notes
@@ -171,9 +204,30 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;; Test cases
-(define m (parallel (list (note 'C 4 2 'piano)
+(define i (sequentiel (list (note 'C 4 2 'piano)
+                            (pause 20)
+                            (note 'F# 7 3/4 'violin)
+                            (parallel (list (note 'C 4 2 'piano)
+                                            (pause 20)
+                                            (note 'F# 7 3/4 'violin)
+                                            (sequentiel (list (note 'C 4 2 'piano)
+                                                        (pause 20)
+                                                        (note 'F# 7 3/4 'violin))))))))
+(define j (sequentiel (list (note 'C 4 2 'piano)
+                            (pause 20)
+                            (note 'F# 7 3/4 'violin)
+                            (parallel (list (note 'C 4 2 'piano)
+                                            (pause 20)
+                                            (note 'F# 7 3/4 'violin)
+                                            (parallel (list (note 'C 4 2 'piano)
+                                                            (pause 20)
+                                                            (note 'F# 7 3/4 'violin))))))))
+(define k (parallel (list (note 'C 4 2 'piano)
                           (pause 20)
                           (note 'F# 7 3/4 'violin))))
+(define m (sequentiel (list (note 'C 4 2 'piano)
+                            (pause 20)
+                            (note 'F# 7 3/4 'violin))))
 (define n (note 'C 4 2 'piano))
 (define p (pause 20))
 
