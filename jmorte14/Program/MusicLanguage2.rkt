@@ -69,7 +69,8 @@
   (/ time-ticks 960))
 ;; Convert note-name and octave to pitch
 (define (get-pitch note-name octave)
-  (+ (get-note-number note-name) (* 12 (if (<= octave 8) octave (error "Unsupported octave")))))
+  (let ((p (+ (get-note-number note-name) (* 12 (if (and (<= octave 10) (>= octave 0)) octave (error "Unsupported octave"))))))
+    (if (> p 127) (error "Unsupported pitch") p)))
 (define (get-note-number note-name)
   (cond ((eq? note-name 'C) 0)
         ((eq? note-name 'C#) 1)
@@ -172,9 +173,14 @@
 ;;;; Test cases
 (define m (parallel (list (note 'C 4 2 'piano)
                           (pause 20)
-                          (note 'C# 4 3/4 'violin))))
+                          (note 'F# 7 3/4 'violin))))
 (define n (note 'C 4 2 'piano))
 (define p (pause 20))
+
+(pitch-of n)
+(pitch-of (transpose n 20))
+(pitch-of (first (rest (rest (music-element-elements m)))))
+(pitch-of (first (rest (rest (music-element-elements (transpose m 37))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;; Input format
