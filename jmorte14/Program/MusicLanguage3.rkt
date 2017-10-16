@@ -76,7 +76,8 @@
 ;; Convert note-name and octave to pitch
 (define (get-pitch note-name octave)
   (let ((p (+ (get-note-number note-name) (* 12 (if (and (<= octave 10) (>= octave 0)) octave (error "Unsupported octave"))))))
-    (if (> p 127) (error "Unsupported pitch") p)))
+    (if (or (< p 0) (> p 127)) (error "Unsupported pitch") p)))
+
 (define (get-note-number note-name)
   (cond ((eq? note-name 'C) 0)
         ((eq? note-name 'C#) 1)
@@ -162,62 +163,20 @@
   (change element change-element-property 'instrument new-instrument))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;; checking functions
-;; Get duration of a music element
-;; Make new list with add value at an index
-(define (list-with lst index value)
-  (if (null? lst)
-    (if (eq? index 0) (list value) lst)
-    (cons
-      (if (zero? index)
-        (if (empty? (first lst)) value (+ (first lst) value))
-        (first lst))
-      (list-with (rest lst) (- index 1) value))))
-;; Check list containing durations for all parallel elements
-(define check-list '())
-;; Adds parallel elements
-(define (make-parallel-indexes elements number index)
-  (cond ((empty? elements) '())
-        ((pair?  elements) (set! check-list (append check-list (list number)))
-                           (make-parallel-indexes (rest elements) number (+ index 1))
-                           (count-duration (first elements) (+ index 1)))))
-;; Goes through the elements of a music element
-(define (go-through-elements elements index is-parallel)
-  (cond ((empty? elements) '())
-        ((pair?  elements) (if is-parallel (make-parallel-indexes elements (list-ref check-list index) index)
-                                           (begin (count-duration (first elements) index)
-                                                  (go-through-elements (rest elements) index is-parallel))))))
-;; Calls funtions based on type of music element, adds duration to check list at specified index
-(define (count-duration element index)
-  (let ((type (type-of element)))
-  (cond ((eq? type 'parallel) (go-through-elements (music-element-elements element) index #t))
-        ((eq? type 'sequentiel) (go-through-elements (music-element-elements element) index #f))
-        ((or (eq? type 'note)
-             (eq? type 'pause)) (set! check-list (list-with check-list (+ index 0) (duration-of element)))))))
-;; Get duration of music element
-(define (get-music-element-duration element)
-  (set! check-list '(0)) (count-duration element 0) check-list (apply max check-list))
-;; Get degree of polyphony
-(define (degree-of-polyphony music-element) 1)
-;; Is monophonic?
-(define (monophonic? music-element)
-  (if (eq? (degree-of-polyphony music-element) 1) #t #f))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;; Transform music element to list of absolute timed notes
 (define (sort-by-start absolute-note-list)
   (sort absolute-note-list < #:key absolute-note-start))
 
 (define (sort-by-end-of-note absolute-note-list)
-  (sort absolute-note-list > #:key (lambda (e) (+ (absolute-note-start e) (absolute-note-duration e)))))
+  (sort absolute-note-list < #:key (lambda (e) (+ (absolute-note-start e) (absolute-note-duration e)))))
 
 (define (get-sub-list elements current-time is-parallel)
-  (cond ((empty? elements) '())
+  (sort-by-end-of-note (cond ((empty? elements) '())
         ((pair? elements) (let ((first-list (get-absolute-list-from (first elements) current-time)))
                             (if is-parallel (if (list? first-list) (append  first-list (get-sub-list (rest elements) current-time is-parallel))
                                                                    (get-sub-list (rest elements) current-time is-parallel))
                                             (if (list? first-list) (append  first-list (get-sub-list (rest elements) (+ (absolute-note-start (last first-list)) (absolute-note-duration (last first-list))) is-parallel))
-                                                                   (get-sub-list (rest elements) first-list is-parallel)))))))
+                                                                   (get-sub-list (rest elements) first-list is-parallel))))))))
 
 (define (get-absolute-list-from element current-time)
   (cond ((eq? (type-of element) 'parallel) (get-sub-list (music-element-elements element) current-time #t))
@@ -238,8 +197,37 @@
                                 (d (absolute-note-duration (first abs-list)))
                                 (r (rest abs-list)))
                             (append (list (note-abs-time-with-duration s i p v d)) (ready-for-midi r))))))
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;; Test cases
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; checking functions ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; Get duration of a music element
+(define (get-music-element-duration element)
+  (let ((last-note (last (sort-by-end-of-note (get-absolute-timed-notes-of element)))))
+    (+ (absolute-note-start last-note) (absolute-note-duration last-note))))
+;; Get degree of polyphony
+(define (degree-of-polyphony element)
+   (apply max (make-polyphony-list (make-start-end-list (get-absolute-timed-notes-of element)) 0)))
+
+(define (sort-start-end-list start-end-list)
+  (sort start-end-list < #:key (lambda (e) (first e))))
+
+(define (make-start-end-list abs-list)
+  (sort-start-end-list (cond ((empty? abs-list) '())
+                             ((pair? abs-list) (let ((s (absolute-note-start (first abs-list)))
+                                                     (d (absolute-note-duration (first abs-list))))
+                                                 (append (list (list s 'start) (list (+ s d) 'end)) (make-start-end-list (rest abs-list))))))))
+
+(define (make-polyphony-list start-end-list current-polyphony)
+  (cond ((empty? start-end-list) '())
+        ((pair? start-end-list) (let ((s-e (last (first start-end-list))))
+                                      (let ((new-polyphony (if (eq? s-e 'start) (+ current-polyphony 1) (- current-polyphony 1))))
+                                  (append (list new-polyphony) (make-polyphony-list (rest start-end-list) new-polyphony)))))))
+;; Is monophonic?
+(define (monophonic? music-element)
+  (if (eq? (degree-of-polyphony music-element) 1) #t #f))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; Test cases ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+ 
 (define instrument-1 'guitar)
 (define instrument-2 'organ)
 (define instrument-3 'flute)
@@ -278,7 +266,20 @@
 (define viva-la-musica (parallel (list (change-instrument (sequentiel singer-1) instrument-1)
                                        (change-instrument (sequentiel singer-2) instrument-2)
                                        (change-instrument (sequentiel singer-3) instrument-3))))
-(define viva-not-canon (sequentiel singer-1))                                                                           
+
+(define (continue-song iterations)
+  (if (eq? iterations 0) '() (append part-1 part-2 part-3 (continue-song (- iterations 1)))))
+
+(define (viva-la-musica-setup-2 iterations)
+  (sequentiel (append part-1 (list (parallel (list (sequentiel (append part-2 part-3 (continue-song iterations)))
+                                                                                             (sequentiel (append part-1 (list (parallel (list (sequentiel (append part-2 part-3 (continue-song iterations)))
+                                                                                                                                              (sequentiel (append part-1 part-2 part-3 (continue-song iterations))))))))))))))
+
+(define viva-not-canon (sequentiel singer-1))
+(define seq-with-para-para (sequentiel (list (parallel (list (note 'C 4 9 'telephone)
+                                                             (note 'C 4 1 'telephone)))
+                                             (parallel (list (note 'C 4 1 'organ)
+                                                             (note 'C 4 1 'organ))))))
 (define i (sequentiel (list (note 'C 4 2 'piano)
                             (pause 20)
                             (note 'F# 7 3/4 'violin)
@@ -306,21 +307,33 @@
 (define n (note 'C 4 2 'piano))
 (define p (pause 20))
 
-(pitch-of n)
-(pitch-of (transpose n 20))
-(pitch-of (first (rest (rest (music-element-elements m)))))
-(pitch-of (first (rest (rest (music-element-elements (transpose m 37))))))
+;(pitch-of n)
+;(pitch-of (transpose n 20))
+;(pitch-of (first (rest (rest (music-element-elements m)))))
+;(pitch-of (first (rest (rest (music-element-elements (transpose m 37))))))
 
-(let ((s (absolute-note-start (first (get-absolute-timed-notes-of n))))
-      (i (absolute-note-instrument (first (get-absolute-timed-notes-of n))))
-      (p (absolute-note-pitch (first (get-absolute-timed-notes-of n))))
-      (v 80)
-      (d (absolute-note-duration (first (get-absolute-timed-notes-of n)))))
-  (note-abs-time-with-duration s i p v d)
-  ;(transform-to-midi-file-and-write-to-file! (list (note-abs-time-with-duration s i p v d)) "The-best")
-  )
+;(let ((s (absolute-note-start (first (get-absolute-timed-notes-of n))))
+;      (i (absolute-note-instrument (first (get-absolute-timed-notes-of n))))
+;      (p (absolute-note-pitch (first (get-absolute-timed-notes-of n))))
+;      (v 80)
+;      (d (absolute-note-duration (first (get-absolute-timed-notes-of n)))))
+;  (note-abs-time-with-duration s i p v d)
+;  (transform-to-midi-file-and-write-to-file! (list (note-abs-time-with-duration s i p v d)) "The-best")
+;  )
 
-(ready-for-midi (get-absolute-timed-notes-of i))
+(define i- (ready-for-midi (get-absolute-timed-notes-of (multiply-duration (viva-la-musica-setup-2 1) 3))))
+;(define i- (ready-for-midi (get-absolute-timed-notes-of (multiply-duration viva-la-musica 3))))
+;(define i- (ready-for-midi (get-absolute-timed-notes-of seq-with-para-para)))
+(define t (get-absolute-timed-notes-of seq-with-para-para))
+(absolute-note-start (first t))
+(absolute-note-start (second t))
+(absolute-note-start (third t))
+(absolute-note-start (fourth t))
+(absolute-note-duration (first t))
+(absolute-note-duration (second t))
+(absolute-note-duration (third t))
+(absolute-note-duration (fourth t))
+(transform-to-midi-file-and-write-to-file! i- "that")
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;; Input format
 ;;  | | parallel
